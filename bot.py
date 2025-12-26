@@ -30,15 +30,18 @@ class DiscussionBot:
         self.dp = Dispatcher()
         self.analyzer = MessageAnalyzer(settings)
         self.notifier = NotificationService(self.bot, settings.admin_id, settings.group_id)
+        # <- here: pass the template from settings
         self.warning_manager = WarningManager(
             cooldown_seconds=self.settings.warning_cooldown,
             db_path=self.settings.db_path,
+            message_template=self.settings.warning_message,
         )
         self._admin_cache: Set[int] = set()
         self._admin_cache_time = None
         self._admin_cache_ttl = self.settings.admin_cache_ttl_minutes
         self._tasks: Set[asyncio.Task] = set()
         self._register_handlers()
+
 
     def _register_handlers(self) -> None:
         self.dp.message.register(

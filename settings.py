@@ -15,6 +15,14 @@ class Settings(BaseSettings):
     # Persistence
     db_path: str = Field("data/bot.sqlite3", env="DB_PATH")
 
+    # Customizable warning message (use \n for newlines). Placeholders: {username}, {full_name}, {chat_id}, {message_id}
+    warning_message: str = Field(
+        "Похоже {username}, вы пишете в общем чате, тогда как Ваш ответ "
+        "должен быть записан как комментарий под постом.\n\n"
+        "Перенесите сообщение в комментарии под соответствующим постом.",
+        env="WARNING_MESSAGE",
+    )
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

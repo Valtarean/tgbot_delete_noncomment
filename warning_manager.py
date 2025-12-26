@@ -1,22 +1,33 @@
 from datetime import datetime, timezone
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import html
 import logging
 
 from aiogram import Bot
 from aiogram.types import Message
 
-from db import set_last_warning, get_last_warning, get_all_warnings
+from db import set_last_warning, get_all_warnings
 
 logger = logging.getLogger(__name__)
 
 
 class WarningManager:
-    def __init__(self, cooldown_seconds: int = 180, db_path: str = "data/bot.sqlite3"):
+    def __init__(
+        self,
+        cooldown_seconds: int = 180,
+        db_path: str = "data/bot.sqlite3",
+        message_template: Optional[str] = None,
+    ):
         self.cooldown_seconds = cooldown_seconds
         self.db_path = db_path
         # in-memory cache to reduce DB hits (user_id -> timestamp int)
         self._cache: Dict[int, int] = {}
+        # template string; may include placeholders {username}, {full_name}, {chat_id}, {message_id}
+        self.message_template = message_template or (
+            "Похоже {username}, вы пишете в общем чате, тогда как Ваш ответ "
+            "должен быть записан как комментарий под постом.\n\n"
+            "Перенесите сообщение в комментарии под соответствующим постом."
+        )
 
     async def _load_cache(self):
         try:
@@ -49,6 +60,33 @@ class WarningManager:
         remaining = self.cooldown_seconds - (now - ts)
         return max(0, remaining) if remaining > 0 else None
 
+    def _render_message(self, user: Any, chat_id: int, message_id: int) -> str:
+        # safe substitutions
+        if user:
+            if getattr(user, "username", None):
+                username = f"@{user.username}"
+            else:
+                # escape full_name if username missing
+                username = html.escape(getattr(user, "full_name", ""))
+            full_name = html.escape(getattr(user, "full_name", ""))
+        else:
+            username = "Пользователь"
+            full_name = "Unknown"
+
+        try:
+            return self.message_template.format(
+                username=username,
+                full_name=full_name,
+                chat_id=chat_id,
+                message_id=message_id,
+            )
+        except Exception:
+            logger.exception("Failed to render warning message template; falling back to default")
+            # fallback: simple escaped message
+            return html.escape(
+                f"Пожалуйста, переместите сообщение #{message_id} в комментарии под соответствующим постом."
+            )
+
     async def send_warning(self, bot: Bot, message: Message) -> Optional[int]:
         user = message.from_user
         if not user:
@@ -59,14 +97,14 @@ class WarningManager:
             logger.info("Not sending warning to %s, cooldown %s", user_id, remaining)
             return None
 
-        username = f"@{user.username}" if user.username else html.escape(user.full_name)
-        text = (
-            f"Похоже {username}, вы пишете в общем чате, тогда как Ваш ответ "
-            f"должен быть записан как комментарий под постом.\n\n"
-            "Перенесите сообщение в комментарии под соответствующим постом."
-        )
+        text = self._render_message(user, message.chat.id, message.message_id)
         try:
-            sent = await bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.message_id, parse_mode="HTML")
+            sent = await bot.send_message(
+                chat_id=message.chat.id,
+                text=text,
+                reply_to_message_id=message.message_id,
+                parse_mode="HTML",
+            )
             await self.record_warning(user_id)
             logger.info("Warning sent to %s", user_id)
             return sent.message_id
