@@ -3,7 +3,7 @@ import asyncio
 import logging
 import signal
 import sys
-from typing import Optional, Set, List
+from typing import Optional, Set, List, Any, Coroutine
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
@@ -72,7 +72,7 @@ class DiscussionBot:
             logger.exception("Failed to refresh admin list")
             return self._admin_cache
 
-    def _create_task(self, coro: asyncio.coroutine) -> asyncio.Task:
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
         task = asyncio.create_task(coro)
         self._tasks.add(task)
 
@@ -80,8 +80,14 @@ class DiscussionBot:
             self._tasks.discard(t)
             if t.cancelled():
                 logger.debug("Background task cancelled")
-            elif t.exception():
-                logger.exception("Background task exception", exc_info=t.exception())
+            else:
+                try:
+                    exc = t.exception()
+                    if exc:
+                        logger.exception("Background task exception", exc_info=exc)
+                except asyncio.CancelledError:
+                    # task was cancelled while getting exception
+                    pass
 
         task.add_done_callback(_on_done)
         return task
