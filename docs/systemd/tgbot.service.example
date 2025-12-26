@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram discussion monitor bot
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/repo
+ExecStart=/usr/bin/python /path/to/repo/bot.py
+Restart=on-failure
+EnvironmentFile=/path/to/repo/.env
+
+[Install]
+WantedBy=multi-user.target
